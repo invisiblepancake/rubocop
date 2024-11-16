@@ -3,88 +3,44 @@
 module RuboCop
   module Cop
     module Style
-      # Checks for uses of if/then/else/end constructs on a single line.
-      # `AlwaysCorrectToMultiline` config option can be set to true to autocorrect all offenses to
-      # multi-line constructs. When `AlwaysCorrectToMultiline` is false (default case) the
-      # autocorrect will first try converting them to ternary operators.
-      #
-      # @example
-      #   # bad
-      #   if foo then bar else baz end
-      #
-      #   # bad
-      #   unless foo then baz else bar end
-      #
-      #   # good
-      #   foo ? bar : baz
-      #
-      #   # good
-      #   bar if foo
-      #
-      #   # good
-      #   if foo then bar end
-      #
-      #   # good
-      #   if foo
-      #     bar
-      #   else
-      #     baz
-      #   end
-      #
-      # @example AlwaysCorrectToMultiline: false (default)
-      #   # bad
-      #   if cond then run else dont end
-      #
-      #   # good
-      #   cond ? run : dont
-      #
-      # @example AlwaysCorrectToMultiline: true
-      #   # bad
-      #   if cond then run else dont end
-      #
-      #   # good
-      #   if cond
-      #     run
-      #   else
-      #     dont
-      #   end
-      #
       class OneLineConditional < Base
         include Alignment
         include ConfigurableEnforcedStyle
         include OnNormalIfUnless
         extend AutoCorrector
 
-        MSG = 'Favor the ternary operator (`?:`) or multi-line constructs ' \
-              'over single-line `%<keyword>s/then/else/end` constructs.'
+        OFFENSE_MESSAGE = 'Favor the ternary operator (`?:`) or multi-line constructs ' \
+                          'over single-line `%<keyword>s/then/else/end` constructs.'
 
         def on_normal_if_unless(node)
-          return unless node.single_line?
-          return unless node.else_branch
-          return if node.elsif? || node.if_branch&.begin_type?
+          return if invalid_node?(node)
 
-          message = message(node)
+          message = format_message(node)
           add_offense(node, message: message) do |corrector|
-            next if part_of_ignored_node?(node)
-
-            autocorrect(corrector, node)
-
-            ignore_node(node)
+            autocorrect_node(corrector, node)
           end
         end
 
         private
 
-        def message(node)
-          format(MSG, keyword: node.keyword)
+        def invalid_node?(node)
+          !node.single_line? || node.else_branch.nil? || node.elsif? || node.if_branch&.begin_type?
         end
 
-        def autocorrect(corrector, node)
+        def format_message(node)
+          format(OFFENSE_MESSAGE, keyword: node.keyword)
+        end
+
+        def autocorrect_node(corrector, node)
+          return if part_of_ignored_node?(node)
+
           if always_multiline? || cannot_replace_to_ternary?(node)
             IfThenCorrector.new(node, indentation: configured_indentation_width).call(corrector)
           else
             corrector.replace(node, ternary_correction(node))
           end
+
+          ignore_node(node)
         end
 
         def ternary_correction(node)
